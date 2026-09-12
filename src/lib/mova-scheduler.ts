@@ -2,6 +2,7 @@
 // Idempotent: deterministic reset IDs keyed by (uid, date, slot index).
 
 import { selectActivitiesForProfile } from "@/lib/mova-activities";
+import { adaptiveSlotMinutes, rankActivitiesForBehavior } from "@/lib/intelligence/behavior-engine";
 import { putReset } from "@/lib/mova-repo";
 import type { MovaProfile, Reset } from "@/lib/mova-types";
 
@@ -36,18 +37,20 @@ function slotsForBreakRhythm(breakRhythm: string): Slot[] {
   ];
 }
 
-export function planScheduleForProfile(profile: MovaProfile, dayIso: string): SchedulePlan {
+export function planScheduleForProfile(profile: MovaProfile, dayIso: string, history: Reset[] = []): SchedulePlan {
   const slots = slotsForBreakRhythm(profile.breakRhythm);
-  const pool = selectActivitiesForProfile(profile);
+  const pool = rankActivitiesForBehavior(profile, history, selectActivitiesForProfile(profile));
+  const baseMinutes = slots.map((slot) => slot.hour * 60 + slot.minute);
+  const adaptiveMinutes = adaptiveSlotMinutes(profile, history, baseMinutes);
   const now = new Date();
   const resets: Reset[] = [];
-  slots.forEach((slot, i) => {
+  adaptiveMinutes.forEach((minutes, i) => {
     const d = new Date(dayIso);
-    d.setHours(slot.hour, slot.minute, 0, 0);
+    d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
     if (d.getTime() <= now.getTime()) return; // don't schedule in the past
-    const activity = pool[i % pool.length];
+    const activity = pool.find((candidate) => candidate && !resets.some((reset) => reset.activityId === candidate.id)) ?? pool[i % pool.length];
     if (!activity) return;
-    const id = `sch-${dayIso}-${slot.hour}${String(slot.minute).padStart(2, "0")}`;
+    const id = `sch-${dayIso}-${Math.floor(minutes / 60)}${String(minutes % 60).padStart(2, "0")}`;
     const iso = d.toISOString();
     resets.push({
       id,
@@ -65,6 +68,8 @@ export function planScheduleForProfile(profile: MovaProfile, dayIso: string): Sc
       distanceMeters: null,
       createdAt: iso,
       updatedAt: iso,
+      graceUntil: null,
+      graceUsed: false,
     });
   });
   return { scheduleDate: dayIso, resets };
@@ -81,7 +86,7 @@ export async function hydrateInitialSchedule(
   existing: Reset[],
 ): Promise<{ created: Reset[]; scheduleDate: string }> {
   const dayIso = new Date().toISOString().slice(0, 10);
-  const plan = planScheduleForProfile(profile, dayIso);
+  const plan = planScheduleForProfile(profile, dayIso, existing);
   const existingIds = new Set(existing.map((r) => r.id));
   const created: Reset[] = [];
   for (const r of plan.resets) {
@@ -92,9 +97,9 @@ export async function hydrateInitialSchedule(
   return { created, scheduleDate: plan.scheduleDate };
 }
 
-export function buildDailySchedule(profile: MovaProfile, now: Date): Reset[] {
+export function buildDailySchedule(profile: MovaProfile, now: Date, history: Reset[] = []): Reset[] {
   const dayIso = now.toISOString().slice(0, 10);
-  const plan = planScheduleForProfile(profile, dayIso);
+  const plan = planScheduleForProfile(profile, dayIso, history);
   return plan.resets;
 }
 

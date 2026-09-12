@@ -153,13 +153,34 @@ function DemoControls() {
 }
 
 function HomeScreen() {
-  const { state, profile, onboarded, authReady, backend, syncStatus, syncError, displayName, resets, nextReset, demo, demoActive } = useMova();
+  const { state, profile, settings, onboarded, authReady, backend, syncStatus, syncError, displayName, resets, nextReset, demo, demoActive } = useMova();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!authReady || syncStatus === "loading") return;
     if (!onboarded) navigate({ to: "/onboarding" });
   }, [authReady, syncStatus, onboarded, navigate]);
+
+  // Keep these hooks above the loading/onboarding returns so their order never changes.
+  const demoSnapshot = demoActive ? demo.readDemoContext() : null;
+  const effectiveProfile = demoSnapshot?.profile ?? profile;
+  const effectiveResets = demoSnapshot?.resets ?? resets;
+  const effectiveCheckIns = demoSnapshot?.checkIns ?? state.checkIns;
+
+  const effectiveNextReset = useMemo(() => {
+    const sorted = [...effectiveResets].sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor));
+    return sorted.find((r) => r.status === "scheduled") ?? null;
+  }, [effectiveResets]);
+
+  const behavior = useMemo(() => {
+    if (demoActive) return demo.demoBehavior();
+    return buildBehaviorSummary(effectiveProfile, effectiveResets, effectiveCheckIns, settings?.suppressedInsightIds ?? []);
+  }, [demoActive, demo, effectiveProfile, effectiveResets, effectiveCheckIns, settings?.suppressedInsightIds]);
+
+  const analytics = useMemo(() => {
+    if (demoActive) return demo.demoAnalytics();
+    return buildAnalyticsSummary(effectiveResets, effectiveCheckIns);
+  }, [demoActive, demo, effectiveResets, effectiveCheckIns]);
 
   if (!authReady || syncStatus === "loading") {
     return (
@@ -181,31 +202,11 @@ function HomeScreen() {
     );
   }
 
-  // Use demo data when in demo mode
-  const effectiveProfile = demoActive ? demo.readDemoContext().profile ?? profile : profile;
-  const effectiveResets = demoActive ? demo.readDemoContext().resets : resets;
-  const effectiveCheckIns = demoActive ? demo.readDemoContext().checkIns : state.checkIns;
-
-  const effectiveNextReset = useMemo(() => {
-    const sorted = [...(demoActive ? demo.readDemoContext().resets : resets)].sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor));
-    return sorted.find((r) => r.status === "scheduled") ?? null;
-  }, [demoActive, demo.readDemoContext().resets, resets]);
-
   const p = effectiveProfile;
   const greeting = displayName && displayName !== "Guest" ? displayName : "there";
   const nextActivity = effectiveNextReset ? getActivity(effectiveNextReset.activityId) : null;
   const mins = effectiveNextReset ? minutesUntil(effectiveNextReset.scheduledFor) : null;
   const nextMins = mins !== null && mins >= 0 ? mins : null;
-
-  const behavior = useMemo(() => {
-    if (demoActive) return demo.demoBehavior();
-    return buildBehaviorSummary(effectiveProfile, effectiveResets, effectiveCheckIns);
-  }, [demoActive, demo.demoBehavior, effectiveProfile, effectiveResets, effectiveCheckIns]);
-
-  const analytics = useMemo(() => {
-    if (demoActive) return demo.demoAnalytics();
-    return buildAnalyticsSummary(effectiveResets, effectiveCheckIns);
-  }, [demoActive, demo.demoAnalytics, effectiveResets, effectiveCheckIns]);
 
   const resetsDone = analytics.completedResets;
   const totalMovementMinutes = Math.round(analytics.totalMovementMinutes);
@@ -291,7 +292,9 @@ function HomeScreen() {
               {nextActivity?.name ?? "Shoulder + breathing reset"}
             </p>
             <p className="mt-1.5 text-[12px] leading-relaxed text-soft">
-              {demoActive
+              {behavior.scheduleShiftMinutes !== 0
+                ? "MOVA adjusted this break based on your recent rhythm."
+                : demoActive
                 ? "This reset adapts to your demo context and history."
                 : nextMins !== null && nextMins < 60
                   ? "Time to step away for a moment."
@@ -310,6 +313,14 @@ function HomeScreen() {
         >
           {demoActive ? "Start reset" : "Preview my reset moment"}
         </Link>
+        {behavior.recommendationReasons.length > 0 && (
+          <div className="mt-3 rounded-2xl bg-mist/65 px-3.5 py-3">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-sagedeep uppercase">Why this one?</p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-soft">
+              {behavior.recommendationReasons.slice(0, 2).map((reason) => reason.label).join(" · ")}
+            </p>
+          </div>
+        )}
       </FrostCard>
 
       {/* Demo controls */}

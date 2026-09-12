@@ -118,6 +118,8 @@ function demoReset(activityId: string, status: Reset["status"], scheduledFor: st
     distanceMeters: null,
     createdAt: now,
     updatedAt: now,
+    graceUntil: null,
+    graceUsed: false,
   };
 }
 
@@ -228,6 +230,28 @@ export function setDemoContext(context: LocationContext): DemoContext {
   return ctx;
 }
 
+// Accelerated demo grace: 15s stands in for the real 10-minute grace period so
+// judges can watch the intervention leave and return. Same domain fields
+// (graceUntil / graceUsed) as the real product.
+export const DEMO_GRACE_MS = 15_000;
+export const REAL_GRACE_MS = 10 * 60_000;
+
+export function activateDemoGrace(resetId: string): Reset | null {
+  const ctx = readDemoContext();
+  if (!ctx.demo) return null;
+  const reset = ctx.resets.find((r) => r.id === resetId);
+  if (!reset) return null;
+  if (reset.status !== "scheduled" && reset.status !== "active") return null;
+  // One grace period per reset.
+  if (reset.graceUsed) return null;
+  if (reset.graceUntil && new Date(reset.graceUntil).getTime() > Date.now()) return reset;
+  reset.graceUntil = new Date(Date.now() + DEMO_GRACE_MS).toISOString();
+  reset.graceUsed = true;
+  reset.updatedAt = nowIso();
+  writeDemoContext(ctx);
+  return reset;
+}
+
 export function triggerNextDemoReset(): { reminder: Reminder; reset: Reset | null } {
   const ctx = readDemoContext();
   if (!ctx.demo) return { reminder: emptyReminder(), reset: null };
@@ -235,6 +259,7 @@ export function triggerNextDemoReset(): { reminder: Reminder; reset: Reset | nul
   if (!scheduled) return { reminder: emptyReminder(), reset: null };
 
   const activity = getActivity(scheduled.activityId);
+  scheduled.scheduledFor = nowIso();
   const reminder: Reminder = {
     id: `rem-${scheduled.id}-${Date.now()}`,
     resetId: scheduled.id,
@@ -248,21 +273,33 @@ export function triggerNextDemoReset(): { reminder: Reminder; reset: Reset | nul
   };
 
   ctx.demoReminders = [reminder, ...ctx.demoReminders];
-  scheduled.status = "active";
-  scheduled.startedAt = nowIso();
-  scheduled.context = "manual";
-  scheduled.verificationStatus = "not_started";
   scheduled.updatedAt = nowIso();
 
   writeDemoContext(ctx);
   return { reminder, reset: scheduled };
 }
 
+export function startDemoReset(resetId: string): Reset | null {
+  const ctx = readDemoContext();
+  if (!ctx.demo) return null;
+  const reset = ctx.resets.find((r) => r.id === resetId);
+  if (!reset || reset.status !== "scheduled") return null;
+  reset.status = "active";
+  reset.startedAt = nowIso();
+  reset.context = "manual";
+  reset.locationContext = ctx.currentContext;
+  reset.verificationStatus = "not_started";
+  reset.updatedAt = nowIso();
+  writeDemoContext(ctx);
+  return reset;
+}
+
 export function dismissDemoReminder(reminderId: string): DemoContext {
   const ctx = readDemoContext();
   if (!ctx.demo) return ctx;
   const r = ctx.demoReminders.find((x) => x.id === reminderId);
-  if (r) {
+  const reset = r ? ctx.resets.find((candidate) => candidate.id === r.resetId) : null;
+  if (r && reset && reset.status !== "scheduled" && reset.status !== "active") {
     r.status = "dismissed";
     writeDemoContext(ctx);
   }
@@ -273,16 +310,14 @@ export function completeDemoWalking(resetId: string, distanceMeters: number): Re
   const ctx = readDemoContext();
   if (!ctx.demo) return null;
   const reset = ctx.resets.find((r) => r.id === resetId);
-  if (!reset) return null;
-  reset.status = "completed";
-  reset.completedAt = nowIso();
+  if (!reset || reset.status !== "active" || distanceMeters < 100) return null;
   reset.verifiedAt = nowIso();
   reset.verificationStatus = "verified";
   reset.verificationMethod = "distance";
   reset.distanceMeters = distanceMeters;
   reset.updatedAt = nowIso();
   writeDemoContext(ctx);
-  return reset;
+  return completeDemoReset(resetId);
 }
 
 export function verifyDemoReset(resetId: string, method: "camera" | "manual" | "distance" | "timed", message: string, confidence = 0.92): Reset | null {
@@ -290,12 +325,24 @@ export function verifyDemoReset(resetId: string, method: "camera" | "manual" | "
   if (!ctx.demo) return null;
   const reset = ctx.resets.find((r) => r.id === resetId);
   if (!reset) return null;
-  reset.status = "completed";
-  reset.completedAt = nowIso();
+  if (reset.status !== "active") return null;
   reset.verifiedAt = nowIso();
   reset.verificationStatus = "verified";
   reset.verificationMethod = method;
   reset.updatedAt = nowIso();
+  writeDemoContext(ctx);
+  return reset;
+}
+
+export function completeDemoReset(resetId: string): Reset | null {
+  const ctx = readDemoContext();
+  if (!ctx.demo) return null;
+  const reset = ctx.resets.find((r) => r.id === resetId);
+  if (!reset || reset.status !== "active" || reset.verificationStatus !== "verified") return null;
+  reset.status = "completed";
+  reset.completedAt = nowIso();
+  reset.updatedAt = nowIso();
+  ctx.demoReminders = ctx.demoReminders.map((reminder) => reminder.resetId === resetId ? { ...reminder, status: "completed" } : reminder);
   writeDemoContext(ctx);
   return reset;
 }
@@ -368,6 +415,9 @@ export type DemoContextApi = {
   resetDemo: () => DemoContext;
   setDemoContext: (context: LocationContext) => DemoContext;
   triggerNextDemoReset: () => { reminder: Reminder; reset: Reset | null };
+  startDemoReset: (resetId: string) => Reset | null;
+  completeDemoReset: (resetId: string) => Reset | null;
+  activateDemoGrace: (resetId: string) => Reset | null;
   dismissDemoReminder: (reminderId: string) => DemoContext;
   completeDemoWalking: (resetId: string, distanceMeters: number) => Reset | null;
   verifyDemoReset: (resetId: string, method: "camera" | "manual" | "distance" | "timed", message: string, confidence?: number) => Reset | null;

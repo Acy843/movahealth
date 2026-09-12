@@ -99,6 +99,47 @@ export function calculateWalkingDistanceMeters(resets: Reset[]): number {
     }, 0);
 }
 
+export function calculateWalkingDistanceMetersForDay(resets: Reset[], dayIso: string): number {
+  const targetDay = localDayKey(dayIso);
+  return resets
+    .filter((reset) => reset.status === "completed" && reset.completedAt && localDayKey(reset.completedAt) === targetDay)
+    .reduce((sum, reset) => {
+      const activity = getActivity(reset.activityId);
+      if (activity?.category === "walking") {
+        return sum + (reset.distanceMeters ?? 0);
+      }
+      return sum;
+    }, 0);
+}
+
+export function calculateWalkingDistanceMetersForWeek(resets: Reset[], weekStartIso: string): number {
+  const start = new Date(weekStartIso);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+
+  return resets
+    .filter((reset) => {
+      if (reset.status !== "completed" || !reset.completedAt) return false;
+      const completed = new Date(reset.completedAt);
+      return completed >= start && completed < end;
+    })
+    .reduce((sum, reset) => {
+      const activity = getActivity(reset.activityId);
+      if (activity?.category === "walking") {
+        return sum + (reset.distanceMeters ?? 0);
+      }
+      return sum;
+    }, 0);
+}
+
+export function countWalkingResetsForDay(resets: Reset[], dayIso: string): number {
+  const targetDay = localDayKey(dayIso);
+  return resets
+    .filter((reset) => reset.status === "completed" && reset.completedAt && localDayKey(reset.completedAt) === targetDay)
+    .filter((reset) => getActivity(reset.activityId)?.category === "walking").length;
+}
+
 export function calculateActiveDays(resets: Reset[]): number {
   const active = new Set(
     resets

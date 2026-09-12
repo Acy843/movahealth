@@ -1,6 +1,7 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { MovaCanvas } from "@/components/mova/screen";
+import { useMova } from "@/lib/mova-store";
 
 export const Route = createFileRoute("/reset")({
   head: () => ({
@@ -23,8 +24,10 @@ export const Route = createFileRoute("/reset")({
 
 function ResetAlert() {
   const navigate = useNavigate();
+  const { currentReset, nextReset, requestGrace, demoActive, demo } = useMova();
   const [seconds, setSeconds] = useState(43);
   const [phase, setPhase] = useState<"in" | "out">("in");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -52,6 +55,27 @@ function ResetAlert() {
 
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
+
+  // Grace target: the current intervention reset (demo mode reads the isolated demo context).
+  const demoTarget = demoActive
+    ? demo.readDemoContext().resets.find((r) => r.status === "active" || (r.status === "scheduled" && new Date(r.scheduledFor).getTime() <= Date.now())) ?? null
+    : null;
+  const graceTarget = demoActive ? demoTarget : currentReset ?? nextReset;
+  const graceUsable = graceTarget !== null && (graceTarget.status === "scheduled" || graceTarget.status === "active") && !graceTarget.graceUsed;
+
+  // One 10-minute grace period per reset (demo: accelerated 15s), persisted on
+  // the reset record — not a frontend timer.
+  const takeBreak = async () => {
+    if (!graceTarget) return;
+    setBusy(true);
+    try {
+      if (demoActive) demo.activateDemoGrace(graceTarget.id);
+      else await requestGrace(graceTarget.id);
+      navigate({ to: "/home" });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <MovaCanvas tone="focus">
@@ -102,18 +126,16 @@ function ResetAlert() {
         </p>
 
         <div className="mt-auto w-full space-y-3 pt-10">
-          <Link
-            to="/verify"
-            className="block w-full rounded-2xl bg-sagedeep/95 px-5 py-4 text-center text-[15px] font-semibold text-white shadow-lg shadow-sagedeep/25"
-          >
-            I've finished my reset
-          </Link>
-          <Link
-            to="/pause"
-            className="frost-2 block w-full rounded-2xl px-5 py-3.5 text-center text-[14px] font-medium text-soft"
-          >
-            I can't take a break right now
-          </Link>
+          {graceUsable && (
+            <button
+              type="button"
+              onClick={takeBreak}
+              disabled={busy}
+              className="frost-2 block w-full rounded-2xl px-5 py-3.5 text-center text-[14px] font-medium text-soft disabled:opacity-55"
+            >
+              {busy ? "Taking a short break…" : "I can't take the break right now"}
+            </button>
+          )}
         </div>
       </div>
     </MovaCanvas>

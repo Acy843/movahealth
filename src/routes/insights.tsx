@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Gift, Sparkles } from "lucide-react";
 import { FrostCard, MovaScreen, ScreenHeader } from "@/components/mova/screen";
 import { buildAnalyticsSummary } from "@/lib/analytics/analytics-engine";
+import { buildBehaviorSummary } from "@/lib/intelligence/behavior-engine";
 import { useMova } from "@/lib/mova-store";
 
 export const Route = createFileRoute("/insights")({
@@ -21,8 +22,9 @@ export const Route = createFileRoute("/insights")({
 });
 
 function Insights() {
-  const { resets, state } = useMova();
+  const { resets, state, profile, settings, dismissInsight } = useMova();
   const summary = buildAnalyticsSummary(resets, state.checkIns);
+  const behavior = buildBehaviorSummary(profile, resets, state.checkIns, settings?.suppressedInsightIds ?? []);
   const distanceKm = summary.totalWalkingDistanceMeters / 1000;
   const unlockedRewards = summary.rewards.filter((reward) => reward.unlocked);
 
@@ -42,7 +44,7 @@ function Insights() {
     };
   });
 
-  const topActivity = summary.activityBreakdown[0];
+  const topActivity = summary.activityBreakdown.find((entry) => entry.completed > 0);
 
   return (
     <MovaScreen>
@@ -174,11 +176,22 @@ function Insights() {
           <p className="text-[11px] font-semibold tracking-[0.2em] uppercase">What MOVA knows</p>
         </div>
         <p className="mt-2.5 text-[13.5px] leading-relaxed text-white/90">
-          {summary.currentStreak > 0
-            ? `Your strongest habit is ${topActivity ? topActivity.activityName.toLowerCase() : "movement"}, and your current streak is ${summary.currentStreak} day${summary.currentStreak === 1 ? "" : "s"}.`
-            : "Your movement story starts here. Your first completed reset will unlock your first real progress milestone."}
+          {behavior.insights.length > 0
+            ? behavior.insights[0]!.statement
+            : "We're still learning your rhythm. Complete a few resets and MOVA will start recognizing your patterns."}
         </p>
       </div>
+
+      {behavior.insights.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {behavior.insights.slice(0, 3).map((insight) => (
+            <div key={insight.id} className="flex items-center justify-between rounded-2xl bg-mist/70 px-3 py-2 text-[11px] text-soft">
+              <span>{insight.statement}</span>
+              <button type="button" onClick={() => void dismissInsight(insight.id)} className="ml-3 shrink-0 font-semibold text-sagedeep">Forget</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-3 rounded-2xl bg-sagedeep/8 px-3 py-2 text-[12px] text-soft">
         <Gift className="size-4 text-sagedeep" strokeWidth={1.75} />

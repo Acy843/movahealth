@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { MovaScreen, PrimaryButton, SelectChip } from "@/components/mova/screen";
 import { useMova } from "@/lib/mova-store";
@@ -83,11 +83,27 @@ function Onboarding() {
   const [rhythm, setRhythm] = useState(profile?.breakRhythm ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!onboarded) return;
+    void navigate({ to: "/home" });
+  }, [navigate, onboarded]);
+
   const toggle = (list: string[], set: (v: string[]) => void, value: string) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+
+  const stepError = () => {
+    if (step === 0 && (!occupation || (occupation === "Other" && !custom.trim()))) {
+      return occupation === "Other" ? "Add your occupation to continue." : "Choose your occupation to continue.";
+    }
+    if (step === 1 && styles.length === 0) return "Select at least one workday style to continue.";
+    if (step === 2 && limits.length === 0) return "Select at least one constraint to continue.";
+    if (step === 3 && !rhythm) return "Choose when you can take breaks to continue.";
+    return null;
+  };
 
   const finish = async () => {
     setSaving(true);
@@ -111,6 +127,12 @@ function Onboarding() {
   };
 
   const next = () => {
+    const invalid = stepError();
+    if (invalid) {
+      setValidationError(invalid);
+      return;
+    }
+    setValidationError(null);
     if (step < 3) {
       setStep(step + 1);
       return;
@@ -135,7 +157,6 @@ function Onboarding() {
   }
 
   if (onboarded) {
-    navigate({ to: "/home" });
     return (
       <MovaScreen withNav={false}>
         <div className="flex flex-1 items-center justify-center">
@@ -180,14 +201,20 @@ function Onboarding() {
                   key={o}
                   label={o}
                   selected={occupation === o}
-                  onClick={() => setOccupation(o)}
+                  onClick={() => {
+                    setOccupation(o);
+                    setValidationError(null);
+                  }}
                 />
               ))}
             </div>
             {occupation === "Other" && (
               <input
                 value={custom}
-                onChange={(e) => setCustom(e.target.value)}
+                onChange={(e) => {
+                  setCustom(e.target.value);
+                  setValidationError(null);
+                }}
                 placeholder="Type your occupation"
                 className="frost-2 w-full rounded-2xl px-4 py-3.5 text-[14px] text-ink placeholder:text-soft/70 focus:ring-2 focus:ring-sage/40 focus:outline-none"
               />
@@ -202,7 +229,10 @@ function Onboarding() {
                 key={w}
                 label={w}
                 selected={styles.includes(w)}
-                onClick={() => toggle(styles, setStyles, w)}
+                onClick={() => {
+                  toggle(styles, setStyles, w);
+                  setValidationError(null);
+                }}
               />
             ))}
           </div>
@@ -215,7 +245,10 @@ function Onboarding() {
                 key={c}
                 label={c}
                 selected={limits.includes(c)}
-                onClick={() => toggle(limits, setLimits, c)}
+                onClick={() => {
+                  toggle(limits, setLimits, c);
+                  setValidationError(null);
+                }}
               />
             ))}
           </div>
@@ -228,7 +261,10 @@ function Onboarding() {
                 key={r}
                 label={r}
                 selected={rhythm === r}
-                onClick={() => setRhythm(r)}
+                onClick={() => {
+                  setRhythm(r);
+                  setValidationError(null);
+                }}
               />
             ))}
           </div>
@@ -254,11 +290,13 @@ function Onboarding() {
             Back
           </button>
         )}
-        <PrimaryButton onClick={next}>{step < 3 ? "Continue" : saving || savingOnboarding ? "Saving…" : "See my profile"}</PrimaryButton>
+        <PrimaryButton onClick={next} disabled={saving || savingOnboarding}>
+          {step < 3 ? "Continue" : saving || savingOnboarding ? "Saving…" : "See my profile"}
+        </PrimaryButton>
       </div>
-      {(error || onboardingError) && (
+      {(validationError || error || onboardingError) && (
         <p className="mt-3 text-center text-[12.5px] text-soft">
-          Couldn't save just now — your answers are kept on this device. {error ?? onboardingError}
+          {validationError ?? `Couldn't save just now — your answers are kept on this device. ${error ?? onboardingError}`}
         </p>
       )}
 

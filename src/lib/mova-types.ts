@@ -101,6 +101,9 @@ export type Reset = {
   distanceMeters: number | null;
   createdAt: string;
   updatedAt: string;
+  graceUntil: string | null;
+  graceUsed: boolean;
+  locationContext?: LocationContext;
 };
 
 export type CheckIn = {
@@ -142,6 +145,7 @@ export type MovaSettings = {
   cameraVerificationEnabled: boolean;
   preferredReminderStyle: "gentle" | "firm" | "silent";
   privacy: PrivacyPreferences;
+  suppressedInsightIds: string[];
   updatedAt: string;
 };
 
@@ -268,6 +272,7 @@ export function defaultSettings(): MovaSettings {
       shareAggregatedWorkplaceData: false,
       allowPersonalization: true,
     },
+    suppressedInsightIds: [],
     updatedAt: nowIso(),
   };
 }

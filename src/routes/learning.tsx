@@ -24,8 +24,15 @@ export const Route = createFileRoute("/learning")({
 });
 
 function Learning() {
-  const { state, profile, resets } = useMova();
-  const summary = buildBehaviorSummary(profile, resets, state.checkIns);
+  const { state, profile, settings, resets, dismissInsight } = useMova();
+  const summary = buildBehaviorSummary(profile, resets, state.checkIns, settings?.suppressedInsightIds ?? []);
+  const learningTitle = summary.learningStage === "new"
+    ? "We're still learning your rhythm."
+    : summary.learningStage === "observing"
+      ? "We're starting to notice your rhythm."
+      : summary.learningStage === "early-patterns"
+        ? "Your rhythm is beginning to take shape."
+        : "Your rhythm is becoming clearer.";
 
   return (
     <MovaScreen>
@@ -35,24 +42,27 @@ function Learning() {
         subtitle="Your schedule is grounded in actual reset history and check-ins."
       />
 
-      <FrostCard className="mt-6 px-5 py-2">
-        {[
-          ["Work pattern", summary.toughestPeriod],
-          ["Best reset", summary.bestActivityName],
-          ["Most difficult period", summary.toughestPeriod],
-          ["Typical break availability", profile?.breakRhythm || "Not set yet"],
-          [
-            "Latest check-in",
-            state.lastFeeling ? `You felt "${state.lastFeeling}"` : "Awaiting your next reset",
-          ],
-        ].map(([label, value]) => (
-          <div key={label} className="border-b border-white/60 py-3.5 last:border-0">
-            <p className="text-[10px] font-semibold tracking-[0.2em] text-soft uppercase">
-              {label}
-            </p>
-            <p className="mt-1 text-[15px] font-medium text-ink">{value}</p>
+      <FrostCard className="mt-6 p-5">
+        <p className="font-display text-[23px] font-semibold leading-tight text-ink">{learningTitle}</p>
+        <p className="mt-2 text-[13px] leading-relaxed text-soft">
+          {summary.learningStage === "new"
+            ? "MOVA is watching how you move, when you take breaks, what you complete, and what you postpone. Keep using MOVA and your personal rhythm will start to take shape."
+            : `${summary.meaningfulCompletions} completed resets across ${summary.activeDays} active days are helping MOVA recognize what fits.`}
+        </p>
+        {summary.insights.length > 0 && (
+          <div className="mt-5 space-y-2.5">
+            {summary.insights.map((insight) => (
+              <div key={insight.id} className="rounded-2xl bg-mist/65 px-3.5 py-3">
+                <p className="text-[13px] font-medium leading-relaxed text-ink">{insight.statement}</p>
+                <p className="mt-1 text-[10.5px] text-soft">Observed across {insight.evidenceCount} resets.</p>
+                <button type="button" onClick={() => void dismissInsight(insight.id)} className="mt-2 text-[10.5px] font-semibold text-sagedeep">That's not right</button>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
+        {summary.insights.length === 0 && (
+          <p className="mt-4 text-[12px] font-medium text-sagedeep">Not enough data yet. Complete a few more resets to reveal patterns.</p>
+        )}
       </FrostCard>
 
       <div className="mt-5 rounded-[26px] bg-sagedeep/92 p-5 text-white shadow-lg shadow-sagedeep/25">
@@ -83,13 +93,13 @@ function Learning() {
         </div>
         <div className="mt-4 space-y-1.5 text-[12.5px] leading-relaxed text-soft">
           <p>
-            <span className="font-semibold text-ink">When</span> a reset is worth suggesting
+            <span className="font-semibold text-ink">When</span> a reset is worth suggesting, based on observed timing
           </p>
           <p>
-            <span className="font-semibold text-ink">What</span> kind of reset suits the moment
+            <span className="font-semibold text-ink">What</span> kind of reset suits the moment, based on completion history
           </p>
           <p>
-            <span className="font-semibold text-ink">How</span> lightly it should be verified
+            <span className="font-semibold text-ink">How</span> lightly it should be verified, based on the activity
           </p>
         </div>
       </FrostCard>

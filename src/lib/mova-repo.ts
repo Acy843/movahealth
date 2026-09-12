@@ -107,11 +107,13 @@ export function toSettings(d: Record<string, unknown>, fb: string): MovaSettings
       shareAggregatedWorkplaceData: typeof p["shareAggregatedWorkplaceData"] === "boolean" ? (p["shareAggregatedWorkplaceData"] as boolean) : f.privacy.shareAggregatedWorkplaceData,
       allowPersonalization: typeof p["allowPersonalization"] === "boolean" ? (p["allowPersonalization"] as boolean) : f.privacy.allowPersonalization,
     },
+    suppressedInsightIds: sa(d["suppressedInsightIds"] ?? f.suppressedInsightIds),
     updatedAt: iso(d["updatedAt"], fb),
   };
 }
 
 export function toReset(id: string, d: Record<string, unknown>, fb: string): Reset {
+  const locationContext = d["locationContext"] === "home" || d["locationContext"] === "school" || d["locationContext"] === "work" || d["locationContext"] === "on_the_move" ? d["locationContext"] : null;
   return {
     id,
     activityId: s(d["activityId"]) || "desk-stretch",
@@ -128,6 +130,9 @@ export function toReset(id: string, d: Record<string, unknown>, fb: string): Res
     distanceMeters: typeof d["distanceMeters"] === "number" ? (d["distanceMeters"] as number) : null,
     createdAt: iso(d["createdAt"], fb),
     updatedAt: iso(d["updatedAt"] ?? d["createdAt"], fb),
+    graceUntil: d["graceUntil"] ? iso(d["graceUntil"], fb) : null,
+    graceUsed: d["graceUsed"] === true,
+    ...(locationContext ? { locationContext } : {}),
   };
 }
 
@@ -160,6 +165,9 @@ function resetToDoc(r: Omit<Reset, "id">, m: FM, serverCreated: boolean): Record
   if (r.rescheduledAt) doc["rescheduledAt"] = m.Timestamp.fromDate(new Date(r.rescheduledAt));
   if (r.rescheduleReason) doc["rescheduleReason"] = r.rescheduleReason;
   if (typeof r.distanceMeters === "number") doc["distanceMeters"] = r.distanceMeters;
+  if (r.graceUntil) doc["graceUntil"] = m.Timestamp.fromDate(new Date(r.graceUntil));
+  if (r.graceUsed) doc["graceUsed"] = r.graceUsed;
+  if (r.locationContext) doc["locationContext"] = r.locationContext;
   return doc;
 }
 
@@ -299,6 +307,9 @@ export async function updateReset(
   if (patch.verificationStatus) doc["verificationStatus"] = patch.verificationStatus;
   if (patch.verificationMethod) doc["verificationMethod"] = patch.verificationMethod;
   if (patch.distanceMeters !== undefined) doc["distanceMeters"] = patch.distanceMeters;
+  if (patch.graceUntil !== undefined) doc["graceUntil"] = patch.graceUntil ? m.Timestamp.fromDate(new Date(patch.graceUntil)) : null;
+  if (patch.graceUsed !== undefined) doc["graceUsed"] = patch.graceUsed;
+  if (patch.locationContext) doc["locationContext"] = patch.locationContext;
   await m.setDoc(m.doc(db, USERS, uid, RESETS, resetId), doc, { merge: true });
 }
 

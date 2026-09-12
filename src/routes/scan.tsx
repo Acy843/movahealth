@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Camera, ShieldCheck } from "lucide-react";
 import { FrostCard, MovaScreen, PrimaryButton, ScreenHeader } from "@/components/mova/screen";
+import { useMova } from "@/lib/mova-store";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({
@@ -15,12 +16,26 @@ export const Route = createFileRoute("/scan")({
 
 function ScanScreen() {
   const navigate = useNavigate();
+  const { currentReset, verifyReset, completeReset } = useMova();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [status, setStatus] = useState("idle");
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [done, setDone] = useState(false);
+
+  const finishVerification = async () => {
+    if (!currentReset || currentReset.verificationMethod !== "camera") return;
+    const verified = await verifyReset(currentReset.id, {
+      status: "verified",
+      method: "camera",
+      message: "Movement detected - verification successful.",
+      confidence: 0.92,
+    });
+    if (!verified) return;
+    await completeReset(currentReset.id);
+    navigate({ to: "/home" });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +93,6 @@ function ScanScreen() {
         eyebrow="Camera check-in · demo"
         title="Quick camera check"
         subtitle="Optional. Video stays on this device — the scan is simulated."
-        back="/verify"
       />
       <FrostCard className="mt-6 overflow-hidden p-0">
         <div className="relative aspect-[3/4] w-full bg-ink/90">
@@ -128,7 +142,7 @@ function ScanScreen() {
         </div>
       ) : done ? (
         <div className="mt-4">
-          <PrimaryButton onClick={() => navigate({ to: "/checkin" })}>Looks good — continue</PrimaryButton>
+          <PrimaryButton onClick={() => void finishVerification()}>Verification passed - complete reset</PrimaryButton>
         </div>
       ) : (
         <p className="mt-4 text-center text-[12px] text-soft">Hold still…</p>

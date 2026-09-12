@@ -13,8 +13,13 @@ import {
   rescheduleResetFlow,
   saveCheckinFlow,
   saveProfileFlow,
+  saveSettingsFlow,
   skipResetFlow,
   startResetFlow,
+  verifyResetFlow,
+  activateGracePeriodFlow,
+  checkGraceStatus,
+  getGraceRemainingMs,
 } from "@/lib/mova-service";
 import {
   createSavedPlace,
@@ -45,6 +50,9 @@ import {
   resetDemo as resetDemoState,
   setDemoContext,
   triggerNextDemoReset,
+  startDemoReset,
+  completeDemoReset,
+  activateDemoGrace,
   dismissDemoReminder,
   verifyDemoReset,
   addDemoCheckin,
@@ -78,6 +86,7 @@ type Ctx = {
   displayOccupation: string;
   currentLocationContext: LocationContext;
   currentLocation: LocationSnapshot | null;
+  walkingSession: WalkingSession | null;
   locationPermissionStatus: LocationPermissionStatus;
   savedPlaces: SavedPlace[];
   locationError: string | null;
@@ -86,11 +95,13 @@ type Ctx = {
   savingOnboarding: boolean;
   onboardingError: string | null;
   setProfile: (patch: Partial<MovaProfile>) => void;
+  dismissInsight: (insightId: string) => Promise<void>;
   startReset: (resetId: string) => Promise<void>;
   completeReset: (resetId: string) => Promise<void>;
   verifyReset: (resetId: string, verification: { status: "verified" | "failed"; method: "camera" | "manual" | "distance" | "timed"; message: string; confidence?: number }) => Promise<Reset | null>;
   rescheduleReset: (resetId: string, delayMinutes: number, reason: string) => Promise<void>;
   skipReset: (resetId: string) => Promise<void>;
+  requestGrace: (resetId: string) => Promise<Reset | null>;
   saveCheckin: (resetId: string, feeling: string, needs: string[]) => Promise<void>;
   refreshLocation: () => Promise<void>;
   savePlace: (label: SavedPlaceLabel, latitude: number, longitude: number, radiusMeters?: number) => Promise<SavedPlace | null>;
@@ -153,6 +164,9 @@ export function MovaProvider({ children }: { children: ReactNode }) {
     resetDemo: resetDemoState,
     setDemoContext,
     triggerNextDemoReset,
+    startDemoReset,
+    completeDemoReset,
+    activateDemoGrace,
     dismissDemoReminder,
     verifyDemoReset,
     addDemoCheckin,
@@ -374,6 +388,16 @@ export function MovaProvider({ children }: { children: ReactNode }) {
     [auth.user],
   );
 
+  const dismissInsight = useCallback(async (insightId: string) => {
+    setState((prev) => {
+      const current = prev.settings;
+      if (!current || current.suppressedInsightIds.includes(insightId)) return prev;
+      const next = { ...current, suppressedInsightIds: [...current.suppressedInsightIds, insightId] };
+      void saveSettingsFlow(auth.user, next);
+      return { ...prev, settings: next };
+    });
+  }, [auth.user]);
+
   const applyReset = useCallback((updated: Reset) => {
     setState((prev) => ({ ...prev, resets: prev.resets.map((r) => (r.id === updated.id ? updated : r)) }));
   }, []);
@@ -383,9 +407,9 @@ export function MovaProvider({ children }: { children: ReactNode }) {
   const startReset = useCallback(async (resetId: string) => {
     const reset = findReset(resetId);
     if (!reset) { setSyncError("reset_not_found"); return; }
-    const started = await startResetFlow(auth.user, resetId);
+    const started = await startResetFlow(auth.user, resetId, currentLocationContext);
     if (started) applyReset(started); else setSyncError("reset_not_startable");
-  }, [auth.user, applyReset, findReset]);
+  }, [auth.user, applyReset, currentLocationContext, findReset]);
 
   const completeReset = useCallback(async (resetId: string) => {
     const reset = findReset(resetId);
@@ -415,6 +439,15 @@ export function MovaProvider({ children }: { children: ReactNode }) {
     if (!reset) { setSyncError("reset_not_found"); return; }
     const skipped = await skipResetFlow(auth.user, resetId);
     if (skipped) applyReset(skipped); else setSyncError("reset_not_skippable");
+  }, [auth.user, applyReset, findReset]);
+
+  // 10-minute grace period (persisted on the reset, not React state).
+  const requestGrace = useCallback(async (resetId: string) => {
+    const reset = findReset(resetId);
+    if (!reset) { setSyncError("reset_not_found"); return null; }
+    const granted = await activateGracePeriodFlow(auth.user, resetId, false);
+    if (granted) applyReset(granted); else setSyncError("grace_unavailable");
+    return granted;
   }, [auth.user, applyReset, findReset]);
 
   const verifyReset = useCallback(async (resetId: string, verification: { status: "verified" | "failed"; method: "camera" | "manual" | "distance" | "timed"; message: string; confidence?: number }) => {
@@ -464,6 +497,7 @@ export function MovaProvider({ children }: { children: ReactNode }) {
       displayOccupation: state.profile?.occupation || "",
       currentLocationContext,
       currentLocation,
+      walkingSession,
       locationPermissionStatus,
       savedPlaces,
       locationError,
@@ -472,11 +506,13 @@ export function MovaProvider({ children }: { children: ReactNode }) {
       savingOnboarding: saving,
       onboardingError: saveError,
       setProfile,
+      dismissInsight,
       startReset,
       completeReset,
       verifyReset,
       rescheduleReset,
       skipReset,
+      requestGrace,
       saveCheckin,
       refreshLocation,
       savePlace,
@@ -498,7 +534,7 @@ export function MovaProvider({ children }: { children: ReactNode }) {
       demoAnalytics,
       demoBehavior,
     };
-  }, [state, auth.status, syncStatus, syncError, completeOnboarding, saving, saveError, setProfile, startReset, completeReset, rescheduleReset, skipReset, saveCheckin, currentLocationContext, currentLocation, locationPermissionStatus, savedPlaces, locationError, locationEnabled, refreshLocation, savePlace, startWalkingSession, stopWalkingSession, reset, demo, demoActive, demoReminders, enterDemoModeFn, exitDemoModeFn, resetDemoFn, setDemoContextFn, triggerNextDemoResetFn, dismissDemoReminderFn, verifyDemoResetFn, addDemoCheckinFn, setDemoWalkingSessionFn, demoAnalytics, demoBehavior]);
+  }, [state, auth.status, syncStatus, syncError, completeOnboarding, saving, saveError, setProfile, dismissInsight, startReset, completeReset, rescheduleReset, skipReset, requestGrace, saveCheckin, currentLocationContext, currentLocation, walkingSession, locationPermissionStatus, savedPlaces, locationError, locationEnabled, refreshLocation, savePlace, startWalkingSession, stopWalkingSession, reset, demo, demoActive, demoReminders, enterDemoModeFn, exitDemoModeFn, resetDemoFn, setDemoContextFn, triggerNextDemoResetFn, dismissDemoReminderFn, verifyDemoResetFn, addDemoCheckinFn, setDemoWalkingSessionFn, demoAnalytics, demoBehavior]);
 
   return <MovaContext.Provider value={value}>{children}</MovaContext.Provider>;
 }

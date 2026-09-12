@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { MovaProvider } from "@/lib/mova-store";
+import { PersistentIntervention } from "@/components/mova/persistent-intervention";
 
 function NotFoundComponent() {
   return (
@@ -135,6 +136,7 @@ function RootComponent() {
       <MovaProvider>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
+        <PersistentIntervention />
       </MovaProvider>
     </QueryClientProvider>
   );
