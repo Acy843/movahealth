@@ -280,10 +280,14 @@ function HomeScreen() {
             <div className="animate-breathe absolute inset-1.5 rounded-full bg-white/50" />
             <div className="relative text-center">
               <p className="font-display text-[26px] leading-none font-bold text-ink">
-                {nextActivity ? (getActivity(nextActivity.id)?.durationSeconds ?? 2280) / 60 : 38}
+                {nextActivity 
+                  ? ((getActivity(nextActivity.id)?.durationSeconds ?? 2280) < 60 
+                      ? (getActivity(nextActivity.id)?.durationSeconds ?? 2280) 
+                      : Math.round((getActivity(nextActivity.id)?.durationSeconds ?? 2280) / 60)) 
+                  : 38}
               </p>
               <p className="text-[9px] font-semibold tracking-[0.15em] text-soft uppercase">
-                min
+                {nextActivity && (getActivity(nextActivity.id)?.durationSeconds ?? 2280) < 60 ? "sec" : "min"}
               </p>
             </div>
           </div>
