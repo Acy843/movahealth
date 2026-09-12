@@ -43,7 +43,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Short Walk",
     category: "walking",
     description: "A two-minute walk to reset your legs, focus and energy.",
-    durationSeconds: 120,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "distance",
     instructions:
