@@ -107,8 +107,28 @@ export function detectLocationContext(snapshot: LocationSnapshot | null, savedPl
   return "on_the_move";
 }
 
+// GPS point acceptance result used for debug/observability output.
+export type GpsPointDecision = {
+  accepted: boolean;
+  reason: "first_point" | "moved" | "too_small" | "too_large_jump" | "poor_accuracy" | "duplicate";
+};
+
+export type WalkingTrackerStats = {
+  acceptedPoints: number;
+  rejectedPoints: number;
+  lastAccuracyMeters: number | null;
+  lastPointAt: string | null;
+  lastRejectionReason: GpsPointDecision["reason"] | null;
+};
+
+// Filtering constants — tuned so real walking accumulates distance while
+// stationary GPS drift and teleport-style noise do not.
+const MIN_STEP_METERS = 1.5;          // ignore sub-1.5m jitter (drift while stationary)
+const MAX_STEP_METERS = 60;           // ignore impossible jumps between fixes
+const MAX_ACCURACY_METERS = 100;      // ignore fixes worse than 100m accuracy
+
 export function startWalkingTracking(
-  onUpdate: (snapshot: LocationSnapshot, totalMeters: number) => void,
+  onUpdate: (snapshot: LocationSnapshot, totalMeters: number, stats: WalkingTrackerStats, decision: GpsPointDecision) => void,
   onError: (message: string) => void,
 ): { stop: () => void; watchId: number | null } {
   if (!hasGeolocationSupport()) {
@@ -119,6 +139,19 @@ export function startWalkingTracking(
   let lastPoint: LocationSnapshot | null = null;
   let totalMeters = 0;
   let watchId: number | null = null;
+  let acceptedPoints = 0;
+  let rejectedPoints = 0;
+  let lastAccuracyMeters: number | null = null;
+  let lastPointAt: string | null = null;
+  let lastRejectionReason: GpsPointDecision["reason"] | null = null;
+
+  const stats = (): WalkingTrackerStats => ({
+    acceptedPoints,
+    rejectedPoints,
+    lastAccuracyMeters,
+    lastPointAt,
+    lastRejectionReason,
+  });
 
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
@@ -128,18 +161,43 @@ export function startWalkingTracking(
         accuracyMeters: pos.coords.accuracy ?? 0,
         timestamp: new Date(pos.timestamp).toISOString(),
       };
+      lastAccuracyMeters = snapshot.accuracyMeters;
+      lastPointAt = snapshot.timestamp;
+
+      let decision: GpsPointDecision = { accepted: false, reason: "first_point" };
 
       if (lastPoint) {
         const distance = haversineMeters(lastPoint, snapshot);
-        const valid = distance >= 2 && distance <= 500;
-        const accuracyIsGood = snapshot.accuracyMeters < 80 || distance < snapshot.accuracyMeters * 3;
-        if (valid && accuracyIsGood) {
-          totalMeters += distance;
+        const timeGapSec = Math.max(0, (new Date(snapshot.timestamp).getTime() - new Date(lastPoint.timestamp).getTime()) / 1000);
+        if (distance < MIN_STEP_METERS) {
+          decision = { accepted: false, reason: distance < 0.5 ? "duplicate" : "too_small" };
+        } else if (distance > MAX_STEP_METERS) {
+          decision = { accepted: false, reason: "too_large_jump" };
+        } else if (snapshot.accuracyMeters > MAX_ACCURACY_METERS) {
+          decision = { accepted: false, reason: "poor_accuracy" };
+        } else if (distance > Math.max(snapshot.accuracyMeters, 10) * 1.5) {
+          // Jump larger than the fix's plausible error radius — likely drift noise.
+          decision = { accepted: false, reason: "too_large_jump" };
+        } else {
+          // Clamp each accepted step to a walking-plausible speed so brief noise
+          // cannot inject large distances (real walking is < 2.5 m/s).
+          const maxPlausible = Math.max(MIN_STEP_METERS, timeGapSec * 2.5);
+          totalMeters += Math.min(distance, maxPlausible);
+          decision = { accepted: true, reason: "moved" };
         }
+
+        if (decision.accepted) acceptedPoints += 1;
+        else {
+          rejectedPoints += 1;
+          lastRejectionReason = decision.reason;
+        }
+      } else {
+        acceptedPoints += 1;
+        decision = { accepted: true, reason: "first_point" };
       }
 
       lastPoint = snapshot;
-      onUpdate(snapshot, totalMeters);
+      onUpdate(snapshot, totalMeters, stats(), decision);
     },
     (error) => {
       const code = normalizePermissionStatus(error.code);

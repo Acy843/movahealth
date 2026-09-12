@@ -71,7 +71,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Hip Mobility",
     category: "movement",
     description: "Opens tight hips from long periods of sitting or standing.",
-    durationSeconds: 120,
+    durationSeconds: 10,
     difficulty: "moderate",
     verificationType: "manual",
     instructions:
@@ -85,7 +85,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Deep Breathing",
     category: "breathing",
     description: "Ninety seconds of slow breathing to settle your nervous system.",
-    durationSeconds: 90,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "timed",
     instructions:
@@ -99,7 +99,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Grounding Breath",
     category: "breathing",
     description: "A quick mental reset for noisy or high-pressure moments.",
-    durationSeconds: 120,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "timed",
     instructions:
@@ -113,7 +113,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Full Body Stretch",
     category: "stretch",
     description: "A longer full-body reset for when you have more time.",
-    durationSeconds: 180,
+    durationSeconds: 10,
     difficulty: "moderate",
     verificationType: "manual",
     instructions:
@@ -127,7 +127,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Eye Break",
     category: "recovery",
     description: "Gives screen-tired eyes and a strained neck a real pause.",
-    durationSeconds: 60,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "manual",
     instructions:
@@ -141,7 +141,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Posture Reset",
     category: "recovery",
     description: "Realigns your spine from an hour of hunching.",
-    durationSeconds: 75,
+    durationSeconds: 15,
     difficulty: "ease",
     verificationType: "camera",
     instructions:
@@ -155,7 +155,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Light Movement",
     category: "movement",
     description: "Gentle movement to shake off stiffness and refocus your mind.",
-    durationSeconds: 150,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "timed",
     instructions:

@@ -31,6 +31,7 @@ import {
   describeLocationContext,
   requestCurrentLocation,
   startWalkingTracking,
+  type WalkingTrackerStats,
 } from "@/lib/location/location-service";
 import type { SavedPlace, SavedPlaceLabel, LocationContext, LocationPermissionStatus, LocationSnapshot, WalkingSession } from "@/lib/location/location-types";
 import type {
@@ -87,6 +88,7 @@ type Ctx = {
   currentLocationContext: LocationContext;
   currentLocation: LocationSnapshot | null;
   walkingSession: WalkingSession | null;
+  walkingStats: WalkingTrackerStats | null;
   locationPermissionStatus: LocationPermissionStatus;
   savedPlaces: SavedPlace[];
   locationError: string | null;
@@ -98,7 +100,7 @@ type Ctx = {
   dismissInsight: (insightId: string) => Promise<void>;
   startReset: (resetId: string) => Promise<void>;
   completeReset: (resetId: string) => Promise<void>;
-  verifyReset: (resetId: string, verification: { status: "verified" | "failed"; method: "camera" | "manual" | "distance" | "timed"; message: string; confidence?: number }) => Promise<Reset | null>;
+  verifyReset: (resetId: string, verification: { status: "verified" | "failed"; method: "camera" | "manual" | "distance" | "timed"; message: string; confidence?: number; distanceMeters?: number }) => Promise<Reset | null>;
   rescheduleReset: (resetId: string, delayMinutes: number, reason: string) => Promise<void>;
   skipReset: (resetId: string) => Promise<void>;
   requestGrace: (resetId: string) => Promise<Reset | null>;
@@ -140,6 +142,7 @@ export function MovaProvider({ children }: { children: ReactNode }) {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationEnabled, setLocationEnabled] = useState<boolean>(state.settings?.locationEnabled ?? false);
   const [walkingSession, setWalkingSession] = useState<WalkingSession | null>(null);
+  const [walkingStats, setWalkingStats] = useState<WalkingTrackerStats | null>(null);
   const [watchStopper, setWatchStopper] = useState<(() => void) | null>(null);
 
   // Demo mode state (isolated, never touches Firebase user data)
@@ -322,14 +325,31 @@ export function MovaProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startWalkingSession = useCallback((resetId: string) => {
-    if (!locationEnabled) {
-      setLocationError("Location is disabled in settings.");
+    // Walking verification uses the REAL browser geolocation stack. The
+    // locationEnabled settings toggle governs passive background location
+    // context only — it must never silently block a required verification.
+    // Browser permission is the actual consent mechanism (watchPosition prompts).
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setLocationError("This device has no GPS support.");
       return null;
     }
+    // A new session always starts from zero — never from historical distance.
+    setWalkingSession({
+      id: `${resetId}-walk-${Date.now()}`,
+      resetId,
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      distanceMeters: 0,
+      distanceMiles: 0,
+      status: "active",
+    });
     const tracker = startWalkingTracking(
-      (snapshot, totalMeters) => {
+      (snapshot, totalMeters, stats) => {
         setCurrentLocation(snapshot);
         setCurrentLocationContext(detectLocationContext(snapshot, savedPlaces));
+        setLocationError(null);
+        setLocationPermissionStatus("granted");
+        setWalkingStats(stats);
         setWalkingSession((prev) => ({
           id: prev?.id ?? `${resetId}-walk-${Date.now()}`,
           resetId,
@@ -340,11 +360,14 @@ export function MovaProvider({ children }: { children: ReactNode }) {
           status: "active",
         }));
       },
-      (message) => setLocationError(message),
+      (message) => {
+        setLocationError(message);
+        setLocationPermissionStatus("denied");
+      },
     );
     setWatchStopper(() => tracker.stop);
     return { stop: () => tracker.stop() };
-  }, [locationEnabled, savedPlaces]);
+  }, [savedPlaces]);
 
   useEffect(() => {
     if (!locationEnabled) {
@@ -450,7 +473,7 @@ export function MovaProvider({ children }: { children: ReactNode }) {
     return granted;
   }, [auth.user, applyReset, findReset]);
 
-  const verifyReset = useCallback(async (resetId: string, verification: { status: "verified" | "failed"; method: "camera" | "manual" | "distance" | "timed"; message: string; confidence?: number }) => {
+  const verifyReset = useCallback(async (resetId: string, verification: { status: "verified" | "failed"; method: "camera" | "manual" | "distance" | "timed"; message: string; confidence?: number; distanceMeters?: number }) => {
     const reset = findReset(resetId);
     if (!reset) { setSyncError("reset_not_found"); return null; }
     const updated = await (await import("@/lib/mova-service")).verifyResetFlow(auth.user, resetId, verification);
@@ -472,6 +495,7 @@ export function MovaProvider({ children }: { children: ReactNode }) {
     setSavedPlaces([]);
     setLocationError(null);
     setWalkingSession(null);
+    setWalkingStats(null);
     if (watchStopper) watchStopper();
   }, [watchStopper]);
 
@@ -498,6 +522,7 @@ export function MovaProvider({ children }: { children: ReactNode }) {
       currentLocationContext,
       currentLocation,
       walkingSession,
+      walkingStats,
       locationPermissionStatus,
       savedPlaces,
       locationError,
