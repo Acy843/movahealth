@@ -15,7 +15,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Desk Stretch",
     category: "stretch",
     description: "Stand up and release the tension that builds up after long desk time.",
-    durationSeconds: 90,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "manual",
     instructions:
@@ -29,7 +29,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Neck & Shoulder Reset",
     category: "stretch",
     description: "Targets the neck and shoulders — the first place stress lands.",
-    durationSeconds: 120,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "camera",
     instructions:
@@ -57,7 +57,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Standing Reset",
     category: "movement",
     description: "Get out of the chair and re-awaken your whole body.",
-    durationSeconds: 90,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "camera",
     instructions:
@@ -141,7 +141,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     name: "Posture Reset",
     category: "recovery",
     description: "Realigns your spine from an hour of hunching.",
-    durationSeconds: 15,
+    durationSeconds: 10,
     difficulty: "ease",
     verificationType: "camera",
     instructions:

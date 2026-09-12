@@ -1,167 +1,178 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState, useCallback } from "react";
 import { Footprints, MapPin } from "lucide-react";
 import { FrostCard, MovaScreen, PrimaryButton, ScreenHeader } from "@/components/mova/screen";
-import { haversineMeters, loadPlaces } from "@/lib/mova-demo-geo";
-import { nearestPlace } from "@/lib/mova-demo-geo";
+import { describeLocationContext } from "@/lib/location/location-service";
 import { useMova } from "@/lib/mova-store";
+import { getActivity } from "@/lib/mova-activities";
 
 export const Route = createFileRoute("/walk")({
   head: () => ({
     meta: [
       { title: "Walk & location | MOVA" },
-      { name: "description", content: "Walking tracker with GPS. Session starts fresh each time. Miles come from completed walks." },
+      { name: "description", content: "Walking tracker with GPS. Session starts fresh each time." },
     ],
   }),
   component: WalkScreen,
 });
 
+const REQUIRED_DISTANCE_METERS = 1609.344; // 1 mile
+
 function WalkScreen() {
-  const { currentReset, walkingSession, startWalkingSession, stopWalkingSession, verifyReset, completeReset, locationError, demoActive, demo } = useMova();
-  const [sessionmiles, setSessionmiles] = useState(0);
-  const [tracking, setTracking] = useState(false);
-  const [place, setPlace] = useState("Unknown");
-  const [err, setErr] = useState("");
+  const navigate = useNavigate();
+  const { 
+    currentReset, 
+    walkingSession, 
+    startWalkingSession, 
+    stopWalkingSession, 
+    verifyReset, 
+    completeReset, 
+    locationError, 
+    demoActive, 
+    demo,
+    currentLocationContext
+  } = useMova();
+  
   const [goalReached, setGoalReached] = useState(false);
-  const watchId = useRef<number | null>(null);
-  const last = useRef<{ lat: number; lon: number } | null>(null);
-  const sessionDistanceRef = useRef(0);
+  const [completing, setCompleting] = useState(false);
+  const [err, setErr] = useState("");
+
+  const activity = currentReset ? getActivity(currentReset.activityId) : null;
+  const isDistanceVerification = currentReset?.verificationMethod === "distance";
 
   useEffect(() => {
-    if (currentReset?.verificationMethod === "distance") {
-      setSessionmiles(0);
-      sessionDistanceRef.current = 0;
-      setGoalReached(false);
-      setTracking(false);
+    if (!isDistanceVerification || !walkingSession || completing) return;
+    
+    if (walkingSession.distanceMeters >= REQUIRED_DISTANCE_METERS && !goalReached) {
+      setGoalReached(true);
+      setCompleting(true);
+      
+      void (async () => {
+        stopWalkingSession();
+        if (demoActive) {
+          demo.completeDemoWalking(currentReset.id, walkingSession.distanceMeters);
+        }
+        
+        const verified = await verifyReset(currentReset.id, {
+          status: "verified",
+          method: "distance",
+          message: "Walking target reached.",
+          distanceMeters: walkingSession.distanceMeters,
+        });
+        
+        if (verified) {
+          await completeReset(currentReset.id);
+          navigate({ to: "/home" });
+        }
+        setCompleting(false);
+      })();
     }
-  }, [currentReset?.id, currentReset?.verificationMethod]);
-
-  useEffect(() => {
-    if (currentReset?.verificationMethod !== "distance" || !walkingSession || walkingSession.distanceMeters < 100) return;
-    setGoalReached(true);
-    void (async () => {
-      stopWalkingSession();
-      const verified = await verifyReset(currentReset.id, {
-        status: "verified",
-        method: "distance",
-        message: "Walking target reached.",
-      });
-      if (verified) await completeReset(currentReset.id);
-    })();
-  }, [completeReset, currentReset, stopWalkingSession, verifyReset, walkingSession]);
-
-  useEffect(() => {
-    return () => {
-      if (watchId.current != null) navigator.geolocation?.clearWatch(watchId.current);
-    };
-  }, []);
-
-  const saveSessionDistance = useCallback((distanceMeters: number) => {
-    if (!currentReset || currentReset.verificationMethod !== "distance") return;
-    if (demoActive) {
-      demo.completeDemoWalking(currentReset.id, distanceMeters);
-    }
-  }, [currentReset, demoActive, demo]);
+  }, [isDistanceVerification, walkingSession?.distanceMeters, goalReached, completing, stopWalkingSession, verifyReset, completeReset, currentReset, navigate, demoActive, demo]);
 
   const start = useCallback(() => {
     setErr("");
-    if (!navigator.geolocation) {
-      setErr("This device has no GPS. Demo still works.");
-      if (demoActive && currentReset?.verificationMethod === "distance") {
-        setSessionmiles(0.35);
-        sessionDistanceRef.current = 0.35 * 1609.344;
-        setGoalReached(true);
-        saveSessionDistance(sessionDistanceRef.current);
-      }
+    setGoalReached(false);
+    
+    if (!navigator.geolocation && !demoActive) {
+      setErr("This device has no GPS.");
       return;
     }
-    last.current = null;
-    sessionDistanceRef.current = 0;
-    setSessionmiles(0);
-    setGoalReached(false);
 
-    if (currentReset?.verificationMethod === "distance") {
-      const session = startWalkingSession(currentReset.id);
-      if (!session) return;
+    if (currentReset) {
+      startWalkingSession(currentReset.id);
     }
-    setTracking(true);
-
-    const onUpdate = (pos: GeolocationPosition) => {
-      const cur = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      const places = loadPlaces();
-      const near = nearestPlace(cur, places, 250);
-      setPlace(near ? near.label : "On the move");
-
-      if (last.current) {
-        const d = haversineMeters(last.current, cur);
-        if (d > 2 && d < 500) {
-          sessionDistanceRef.current += d;
-          setSessionmiles(sessionDistanceRef.current / 1609.344);
-
-          if (currentReset?.verificationMethod === "distance" && sessionDistanceRef.current >= 100 && !goalReached) {
-            setGoalReached(true);
-            saveSessionDistance(sessionDistanceRef.current);
-          }
-        }
-      }
-      last.current = cur;
-    };
-
-    const onError = () => {
-      setErr("Location blocked. Allow it for live tracking, or use demo mode.");
-      setTracking(false);
-    };
-
-    watchId.current = navigator.geolocation.watchPosition(
-      onUpdate,
-      onError,
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-    );
-  }, [currentReset, demoActive, goalReached, loadPlaces, nearestPlace, saveSessionDistance, startWalkingSession]);
+  }, [currentReset, startWalkingSession, demoActive]);
 
   const stop = useCallback(() => {
-    if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
-    watchId.current = null;
-    setTracking(false);
-    if (currentReset?.verificationMethod === "distance" && sessionDistanceRef.current > 0) {
-      saveSessionDistance(sessionDistanceRef.current);
+    stopWalkingSession();
+    if (demoActive && currentReset && walkingSession) {
+      demo.completeDemoWalking(currentReset.id, walkingSession.distanceMeters);
     }
-  }, [currentReset, saveSessionDistance]);
+  }, [stopWalkingSession, demoActive, currentReset, walkingSession, demo]);
+
+  const tracking = walkingSession?.status === "active";
+  const sessionmiles = walkingSession?.distanceMiles ?? 0;
+  const place = describeLocationContext(currentLocationContext);
 
   return (
     <MovaScreen withNav={false}>
       <ScreenHeader
         eyebrow="Walking verification"
-        title="Walk & place"
-        subtitle={currentReset?.verificationMethod === "distance" ? "Keep walking until MOVA records the required distance." : "Session starts fresh each time you start."}
+        title={activity?.name ?? "Walk & place"}
+        subtitle={isDistanceVerification ? "Keep walking until MOVA records the required distance." : "Session starts fresh each time you start."}
       />
       <FrostCard className="mt-6 p-5 text-center">
         <Footprints className="mx-auto size-6 text-sagedeep" strokeWidth={1.75} />
         <p className="mt-2 font-display text-[44px] font-bold text-ink">{sessionmiles.toFixed(2)}</p>
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-soft">
-          {currentReset?.verificationMethod === "distance" ? "session miles" : "miles this session"}
+          session miles
         </p>
         <p className="mt-2 flex items-center justify-center gap-1.5 text-[12.5px] text-soft">
           <MapPin className="size-3.5" /> {place}
         </p>
-        {goalReached && (
-          <p className="mt-2 text-[12px] font-medium text-sagedeep">Goal reached!</p>
+        
+        {tracking && isDistanceVerification && !goalReached && (
+          <div className="mt-4 px-2">
+            <p className="text-[10px] text-soft mb-1">
+              {Math.round(walkingSession.distanceMeters)}m / {REQUIRED_DISTANCE_METERS}m
+            </p>
+            <div className="h-1.5 w-full bg-mist rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-sage to-sky transition-all duration-500" 
+                style={{ width: `${Math.min(100, (walkingSession.distanceMeters / REQUIRED_DISTANCE_METERS) * 100)}%` }}
+              />
+            </div>
+          </div>
         )}
-        {(err || locationError) && <p className="mt-2 text-[12px] text-soft">{err || locationError}</p>}
+
+        {goalReached && (
+          <p className="mt-4 text-[12px] font-medium text-sagedeep">Goal reached! Completing reset...</p>
+        )}
+        {(err || locationError) && <p className="mt-4 text-[12px] text-soft">{err || locationError}</p>}
       </FrostCard>
-      <div className="mt-4">
+      
+      <div className="mt-4 flex flex-col gap-3">
         {!tracking ? (
           <PrimaryButton onClick={start}>
-            {demoActive && !navigator.geolocation ? "Simulate walk" : "Start walk"}
+            Start walk
           </PrimaryButton>
         ) : (
-          <PrimaryButton onClick={stop}>Walking in progress</PrimaryButton>
+          <PrimaryButton onClick={stop} disabled={completing}>
+            {completing ? "Completing..." : "Walking in progress (Stop)"}
+          </PrimaryButton>
+        )}
+        
+        {demoActive && !tracking && !goalReached && (
+          <button 
+            type="button"
+            className="rounded-2xl bg-sagedeep/10 px-5 py-3 text-[14px] font-semibold text-sagedeep transition-all hover:bg-sagedeep/20"
+            onClick={async () => {
+              if (!currentReset) return;
+              setCompleting(true);
+              setGoalReached(true);
+              demo.completeDemoWalking(currentReset.id, REQUIRED_DISTANCE_METERS);
+              const verified = await verifyReset(currentReset.id, {
+                status: "verified",
+                method: "distance",
+                message: "Walking target reached.",
+                distanceMeters: REQUIRED_DISTANCE_METERS,
+              });
+              if (verified) {
+                await completeReset(currentReset.id);
+                navigate({ to: "/home" });
+              }
+              setCompleting(false);
+            }}
+          >
+            Simulate 1 Mile Walk
+          </button>
         )}
       </div>
+      
       <FrostCard soft className="mt-4 p-5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-soft">How it works</p>
         <p className="mt-1.5 text-[12.5px] leading-relaxed text-soft">
-          {currentReset?.verificationMethod === "distance"
+          {isDistanceVerification
             ? "Each walking session starts at 0. Complete the distance to verify this reset. Your total walking distance is calculated from all completed walks."
             : "Each walk session starts fresh. Your total comes from completed walks, not this live tracker."}
         </p>

@@ -2,21 +2,17 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { MovaCanvas } from "@/components/mova/screen";
 import { useMova } from "@/lib/mova-store";
+import { getActivity, displayDuration } from "@/lib/mova-activities";
 
 export const Route = createFileRoute("/reset")({
   head: () => ({
     meta: [
-      { title: "MOVA time — 60-second reset | MOVA" },
+      { title: "MOVA time — reset | MOVA" },
       {
         name: "description",
-        content:
-          "A guided 60-second shoulder and breathing reset, timed by AI for a moment that fits your shift.",
+        content: "A guided reset timed by AI for a moment that fits your shift.",
       },
-      { property: "og:title", content: "MOVA time — 60-second reset" },
-      {
-        property: "og:description",
-        content: "You don't need a long break. You need a moment.",
-      },
+      { property: "og:title", content: "MOVA time — reset" },
     ],
   }),
   component: ResetAlert,
@@ -25,7 +21,17 @@ export const Route = createFileRoute("/reset")({
 function ResetAlert() {
   const navigate = useNavigate();
   const { currentReset, nextReset, requestGrace, demoActive, demo } = useMova();
-  const [seconds, setSeconds] = useState(43);
+  
+  // Grace target: the current intervention reset (demo mode reads the isolated demo context).
+  const demoTarget = demoActive
+    ? demo.readDemoContext().resets.find((r) => r.status === "active" || (r.status === "scheduled" && new Date(r.scheduledFor).getTime() <= Date.now())) ?? null
+    : null;
+  const graceTarget = demoActive ? demoTarget : currentReset ?? nextReset;
+  
+  const activity = graceTarget ? getActivity(graceTarget.activityId) : null;
+  const initialSeconds = activity?.durationSeconds ?? 10;
+
+  const [seconds, setSeconds] = useState(initialSeconds);
   const [phase, setPhase] = useState<"in" | "out">("in");
   const [busy, setBusy] = useState(false);
 
@@ -56,11 +62,6 @@ function ResetAlert() {
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
 
-  // Grace target: the current intervention reset (demo mode reads the isolated demo context).
-  const demoTarget = demoActive
-    ? demo.readDemoContext().resets.find((r) => r.status === "active" || (r.status === "scheduled" && new Date(r.scheduledFor).getTime() <= Date.now())) ?? null
-    : null;
-  const graceTarget = demoActive ? demoTarget : currentReset ?? nextReset;
   const graceUsable = graceTarget !== null && (graceTarget.status === "scheduled" || graceTarget.status === "active") && !graceTarget.graceUsed;
 
   // One 10-minute grace period per reset (demo: accelerated 15s), persisted on
@@ -84,22 +85,21 @@ function ResetAlert() {
           MOVA time
         </p>
         <h1 className="animate-rise mt-3 font-display text-[26px] leading-tight font-semibold text-ink">
-          You've been working for 96 minutes.
+          You don't need a long break.
         </h1>
         <p className="mt-2 max-w-[28ch] text-[13.5px] leading-relaxed text-soft">
-          You don't need a long break. You need a moment.
+          You need a moment.
         </p>
 
         <div className="frost mt-7 w-full rounded-[26px] p-5 text-left">
           <p className="text-[11px] font-semibold tracking-[0.2em] text-sagedeep uppercase">
-            60-second reset
+            {activity ? displayDuration(initialSeconds) : "60-second"} reset
           </p>
           <p className="mt-1.5 text-[16px] font-semibold text-ink">
-            Shoulder + breathing reset
+            {activity?.name ?? "Shoulder + breathing reset"}
           </p>
           <p className="mt-1.5 text-[12.5px] leading-relaxed text-soft">
-            Sit or stand comfortably. Roll your shoulders slowly while following the
-            breathing guide.
+            {activity?.instructions ?? "Sit or stand comfortably. Roll your shoulders slowly while following the breathing guide."}
           </p>
         </div>
 

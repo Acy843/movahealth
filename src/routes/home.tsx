@@ -153,7 +153,7 @@ function DemoControls() {
 }
 
 function HomeScreen() {
-  const { state, profile, settings, onboarded, authReady, backend, syncStatus, syncError, displayName, resets, nextReset, demo, demoActive } = useMova();
+  const { state, profile, settings, onboarded, authReady, backend, syncStatus, syncError, displayName, resets, nextReset, demo, demoActive, startReset } = useMova();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -307,12 +307,25 @@ function HomeScreen() {
             </div>
           </div>
         </div>
-        <Link
-          to="/reset"
+        <button
+          type="button"
+          onClick={async () => {
+            if (!effectiveNextReset) return;
+            const isCamera = effectiveNextReset.verificationMethod === "camera";
+            const isDistance = effectiveNextReset.verificationMethod === "distance";
+            
+            if (demoActive) {
+              demo.startDemoReset(effectiveNextReset.id);
+            } else {
+              await startReset(effectiveNextReset.id);
+            }
+            
+            navigate({ to: isCamera ? "/scan" : isDistance ? "/walk" : "/reset" });
+          }}
           className="mt-4 block w-full rounded-2xl bg-sagedeep/95 px-5 py-3.5 text-center text-[14px] font-semibold text-white shadow-lg shadow-sagedeep/25 transition-all hover:bg-sagedeep active:scale-[0.99]"
         >
-          {demoActive ? "Start reset" : "Preview my reset moment"}
-        </Link>
+          {demoActive ? "Start reset" : "Start my reset moment"}
+        </button>
         {behavior.recommendationReasons.length > 0 && (
           <div className="mt-3 rounded-2xl bg-mist/65 px-3.5 py-3">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-sagedeep uppercase">Why this one?</p>
