@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Check, Info } from "lucide-react";
 import { FrostCard, MovaScreen, ScreenHeader } from "@/components/mova/screen";
+import { useMova } from "@/lib/mova-store";
 
 export const Route = createFileRoute("/verify")({
   head: () => ({
@@ -30,6 +31,11 @@ const checks = [
 ];
 
 function VerifyScreen() {
+  const navigate = useNavigate();
+  const { currentReset } = useMova();
+  const cameraReset = currentReset?.verificationMethod === "camera";
+  const walkingReset = currentReset?.verificationMethod === "distance";
+
   return (
     <MovaScreen withNav={false} tone="focus">
       <ScreenHeader
@@ -45,7 +51,9 @@ function VerifyScreen() {
           <Check className="size-14 text-sagedeep" strokeWidth={1.5} />
         </div>
       </div>
-      <p className="mt-5 text-center text-[16px] font-semibold text-sagedeep">Reset verified</p>
+      <p className="mt-5 text-center text-[16px] font-semibold text-sagedeep">
+        {cameraReset || walkingReset ? "Verification required" : "Reset verified"}
+      </p>
 
       <div className="mt-7 space-y-2.5">
         {checks.map((c) => (
@@ -78,18 +86,30 @@ function VerifyScreen() {
       </div>
 
       <div className="mt-auto pt-8 space-y-3">
-        <Link
-          to="/scan"
-          className="frost-2 block w-full rounded-2xl px-5 py-3.5 text-center text-[14px] font-medium text-soft"
-        >
-          Verify with camera (demo)
-        </Link>
-        <Link
-          to="/checkin"
-          className="block w-full rounded-2xl bg-sagedeep/95 px-5 py-4 text-center text-[15px] font-semibold text-white shadow-lg shadow-sagedeep/25"
-        >
-          Continue
-        </Link>
+        {cameraReset ? (
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/scan" })}
+            className="block w-full rounded-2xl bg-sagedeep/95 px-5 py-4 text-center text-[15px] font-semibold text-white shadow-lg shadow-sagedeep/25"
+          >
+            Open camera scan
+          </button>
+        ) : walkingReset ? (
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/walk" })}
+            className="block w-full rounded-2xl bg-sagedeep/95 px-5 py-4 text-center text-[15px] font-semibold text-white shadow-lg shadow-sagedeep/25"
+          >
+            Start walking verification
+          </button>
+        ) : (
+          <Link
+            to="/checkin"
+            className="block w-full rounded-2xl bg-sagedeep/95 px-5 py-4 text-center text-[15px] font-semibold text-white shadow-lg shadow-sagedeep/25"
+          >
+            Continue
+          </Link>
+        )}
       </div>
     </MovaScreen>
   );

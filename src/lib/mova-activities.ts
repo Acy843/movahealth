@@ -31,7 +31,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     description: "Targets the neck and shoulders — the first place stress lands.",
     durationSeconds: 120,
     difficulty: "ease",
-    verificationType: "manual",
+    verificationType: "camera",
     instructions:
       "Sit tall. Tilt your head toward each shoulder, holding for three breaths per side. Roll your shoulders backward in slow circles ten times, then forward ten times.",
     active: true,
@@ -45,7 +45,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     description: "A two-minute walk to reset your legs, focus and energy.",
     durationSeconds: 120,
     difficulty: "ease",
-    verificationType: "manual",
+    verificationType: "distance",
     instructions:
       "Walk at a comfortable pace for two minutes. Keep your shoulders loose and take a few deeper breaths as you go. Any two minutes of walking counts.",
     active: true,
@@ -59,7 +59,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     description: "Get out of the chair and re-awaken your whole body.",
     durationSeconds: 90,
     difficulty: "ease",
-    verificationType: "manual",
+    verificationType: "camera",
     instructions:
       "Stand up. Roll your hips twice in each direction, reach for the sky, then fold forward and let your head hang for three breaths. Rise slowly.",
     active: true,
@@ -143,7 +143,7 @@ export const ACTIVITY_CATALOGUE: readonly Activity[] = [
     description: "Realigns your spine from an hour of hunching.",
     durationSeconds: 75,
     difficulty: "ease",
-    verificationType: "manual",
+    verificationType: "camera",
     instructions:
       "Sit up, tuck your chin slightly, and roll your shoulders back and down. Squeeze your shoulder blades together for five seconds, release, repeat five times.",
     active: true,
